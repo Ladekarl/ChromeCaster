@@ -3,13 +3,13 @@ import {WebView} from 'react-native-webview';
 
 class Home extends Component {
 
-    _onMessage = event => {
+    onMessage = event => {
         console.log('_onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         var videoSrc = res.message;
     };
 
-    detectVideoPlayingJs = function () {
+    detectVideoPlayingJs = () => {
         return `
             (function () {
                 window.addEventListener("load", function() { 
@@ -43,7 +43,7 @@ class Home extends Component {
                 javaScriptCanOpenWindowsAutomatically={false}
                 injectedJavaScript={this.detectVideoPlayingJs()}
                 mediaPlaybackRequiresUserAction={true}
-                onMessage={this._onMessage}
+                onMessage={this.onMessage}
             />
         );
     }
