@@ -62,6 +62,7 @@
 		B7748290C50C8CB2D40A1F1B /* Pods-ChromeCaster-tvOSTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ChromeCaster-tvOSTests.release.xcconfig"; path = "Target Support Files/Pods-ChromeCaster-tvOSTests/Pods-ChromeCaster-tvOSTests.release.xcconfig"; sourceTree = "<group>"; };
 		BA890EB1F8C25028718A3230 /* Pods-ChromeCaster-tvOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ChromeCaster-tvOS.release.xcconfig"; path = "Target Support Files/Pods-ChromeCaster-tvOS/Pods-ChromeCaster-tvOS.release.xcconfig"; sourceTree = "<group>"; };
 		C76DE371AC11C1759046F767 /* libPods-ChromeCaster-ChromeCasterTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ChromeCaster-ChromeCasterTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CBC25D3425157259005FAF0A /* ChromeCaster.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = ChromeCaster.entitlements; path = ChromeCaster/ChromeCaster.entitlements; sourceTree = "<group>"; };
 		CEFA431C41E550C6CE100647 /* Pods-ChromeCaster.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ChromeCaster.release.xcconfig"; path = "Target Support Files/Pods-ChromeCaster/Pods-ChromeCaster.release.xcconfig"; sourceTree = "<group>"; };
 		D600454CF0835C1E26D255EE /* libPods-ChromeCaster.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ChromeCaster.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAA27E6F769DA0A0A2B9E8C5 /* Pods-ChromeCaster-ChromeCasterTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ChromeCaster-ChromeCasterTests.release.xcconfig"; path = "Target Support Files/Pods-ChromeCaster-ChromeCasterTests/Pods-ChromeCaster-ChromeCasterTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -125,6 +126,7 @@
 		13B07FAE1A68108700A75B9A /* ChromeCaster */ = {
 			isa = PBXGroup;
 			children = (
+				CBC25D3425157259005FAF0A /* ChromeCaster.entitlements */,
 				008F07F21AC5B25A0029DE68 /* main.jsbundle */,
 				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
 				13B07FB01A68108700A75B9A /* AppDelegate.m */,
@@ -161,7 +163,6 @@
 				42B3B9345E7D8E0E9849ECEA /* Pods-ChromeCaster-tvOSTests.debug.xcconfig */,
 				B7748290C50C8CB2D40A1F1B /* Pods-ChromeCaster-tvOSTests.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -210,6 +211,7 @@
 				00E356EB1AD99517003FC87E /* Frameworks */,
 				00E356EC1AD99517003FC87E /* Resources */,
 				6DE5D6209260932AA49D46CF /* [CP] Copy Pods Resources */,
+				41CA355B568F4E770A267649 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -232,6 +234,7 @@
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				7C7F6CD0295D9F476923F319 /* [CP] Copy Pods Resources */,
+				79EDD5B88EF32840CA1B0FE7 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -294,6 +297,7 @@
 						TestTargetID = 13B07F861A680F5B00A75B9A;
 					};
 					13B07F861A680F5B00A75B9A = {
+						DevelopmentTeam = 2AFEAX4TBH;
 						LastSwiftMigration = 1120;
 					};
 					2D02E47A1E0B4A5D006451C7 = {
@@ -435,6 +439,24 @@
 			shellPath = /bin/sh;
 			shellScript = "export NODE_BINARY=node\n../node_modules/react-native/scripts/react-native-xcode.sh";
 		};
+		41CA355B568F4E770A267649 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ChromeCaster-ChromeCasterTests/Pods-ChromeCaster-ChromeCasterTests-frameworks.sh",
+				"${PODS_ROOT}/google-cast-sdk/GoogleCastSDK-ios-4.3.0/GoogleCast.framework",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/GoogleCast.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ChromeCaster-ChromeCasterTests/Pods-ChromeCaster-ChromeCasterTests-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		6DE5D6209260932AA49D46CF /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -451,6 +473,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ChromeCaster-ChromeCasterTests/Pods-ChromeCaster-ChromeCasterTests-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		79EDD5B88EF32840CA1B0FE7 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ChromeCaster/Pods-ChromeCaster-frameworks.sh",
+				"${PODS_ROOT}/google-cast-sdk/GoogleCastSDK-ios-4.3.0/GoogleCast.framework",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/GoogleCast.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ChromeCaster/Pods-ChromeCaster-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		7C7F6CD0295D9F476923F319 /* [CP] Copy Pods Resources */ = {
@@ -655,7 +695,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = ChromeCaster/ChromeCaster.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2AFEAX4TBH;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ChromeCaster/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -678,7 +720,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = ChromeCaster/ChromeCaster.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2AFEAX4TBH;
 				INFOPLIST_FILE = ChromeCaster/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
