@@ -29,14 +29,12 @@ class CasterControl extends Component {
     }
 
     updatedListener = ({mediaStatus}) => {
-        console.log(mediaStatus);
         this.setState({
             playerState: mediaStatus.playerState,
         });
     };
 
     progressListener = ({mediaProgress}) => {
-        console.log(mediaProgress);
         this.setState({
             position: mediaProgress.progress,
             duration: mediaProgress.duration,

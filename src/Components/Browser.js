@@ -3,6 +3,7 @@ import {
     Animated,
     Dimensions,
     Image,
+    Platform,
     SafeAreaView,
     StatusBar,
     StyleSheet,
@@ -18,7 +19,6 @@ import GoogleCast, {CastButton} from 'react-native-google-cast';
 import CasterControl from './CasterControl';
 
 const windowHeight = Dimensions.get('window').height;
-const windowWidth = Dimensions.get('window').width;
 
 class Browser extends Component {
     webviewRef;
@@ -42,12 +42,13 @@ class Browser extends Component {
 
         this.searchBar = new Animated.Value(0);
         this.backgroundColor = new Animated.Value(0);
+        if (Platform.OS === 'android') {
+            StatusBar.setBackgroundColor('#0065ff');
+        }
         StatusBar.setBarStyle('light-content');
     }
 
     componentDidMount() {
-        GoogleCast.showIntroductoryOverlay();
-
         // Connection failed
         GoogleCast.EventEmitter.addListener(GoogleCast.SESSION_START_FAILED, error => {
             console.error(error);
@@ -84,7 +85,7 @@ class Browser extends Component {
                     imageUrl: image, // 'Image video representative uri
                     title, // Media main title
                     subtitle, // Media subtitle
-                    studio: 'ChromeCaster', // Media or app owner
+                    studio: 'Chromecaster', // Media or app owner
                     streamDuration: duration, // Stream duration in seconds
                     playPosition: currentTime, // Stream play position in seconds
                 }).then(() => {
@@ -108,12 +109,12 @@ class Browser extends Component {
     };
 
     onMessage = event => {
-        const {casting, currentUrl} = this.state;
+        const {casting, currentUrl, searchBarText} = this.state;
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration, poster} = res.message;
         if (!casting || casting !== 'videoSrc') {
-            this.startCast(src, currentUrl, 'ChromeCaster', duration, currentTime, poster);
+            this.startCast(src, searchBarText, currentUrl, duration, currentTime, poster);
         }
     };
 
@@ -204,6 +205,9 @@ class Browser extends Component {
     };
 
     animate = () => {
+        if (Platform.OS === 'android') {
+            StatusBar.setBackgroundColor('#ffffff', true);
+        }
         StatusBar.setBarStyle('dark-content', true);
         Animated.parallel([
             Animated.timing(this.searchBar, {
@@ -230,6 +234,10 @@ class Browser extends Component {
             isCasting,
             firstSearch,
         } = this.state;
+
+        if (Platform.OS === 'ios' && !firstSearch) {
+            GoogleCast.showIntroductoryOverlay();
+        }
 
         const yVal = this.searchBar.interpolate({
             inputRange: [0, 1],
@@ -270,6 +278,7 @@ class Browser extends Component {
                                 multiline={false}
                                 textAlign={'center'}
                                 onChangeText={this.searchBarTextChanged}
+                                underlineColorAndroid={'transparent'}
                                 style={styles.searchInput}
                                 value={searchBarText}
                                 keyboardType={'web-search'}
@@ -337,7 +346,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         position: 'absolute',
-        top: windowHeight / 2 - 170,
+        top: windowHeight / 2 - 250,
         width: '100%',
     },
     firstSearchText: {
@@ -379,6 +388,8 @@ const styles = StyleSheet.create({
         margin: 5,
         fontSize: 17,
         color: '#222222',
+        padding: 0,
+        height: 20,
     },
     navigationBar: {
         flexDirection: 'row',
