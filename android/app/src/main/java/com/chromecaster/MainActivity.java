@@ -1,4 +1,4 @@
-package com.chromecaster;
+package com.ladekarl.chromecaster;
 
 import com.facebook.react.ReactActivity;
 import com.facebook.react.GoogleCastActivity;

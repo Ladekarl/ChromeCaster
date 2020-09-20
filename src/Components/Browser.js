@@ -1,27 +1,120 @@
 import React, {Component} from 'react';
-import {ActivityIndicator, StyleSheet, TextInput, TouchableOpacity, View} from 'react-native';
+import {
+    Animated,
+    Dimensions,
+    Image,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import {WebView} from 'react-native-webview';
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
 import {faAngleLeft, faAngleRight, faSearch} from '@fortawesome/free-solid-svg-icons';
+import GoogleCast, {CastButton} from 'react-native-google-cast';
+import CasterControl from './CasterControl';
+
+const windowHeight = Dimensions.get('window').height;
+const windowWidth = Dimensions.get('window').width;
 
 class Browser extends Component {
-
     webviewRef;
 
     constructor(props) {
         super(props);
         this.state = {
-            searchBarText: 'google.com',
+            searchBarText: null,
             url: 'https://google.com',
             canGoBack: false,
             canGoForward: false,
+            currentUrl: null,
+            casting: null,
+            title: '',
+            subtitle: '',
+            duration: 0,
+            currentTime: 0,
+            isCasting: false,
+            firstSearch: true,
         };
+
+        this.searchBar = new Animated.Value(0);
+        this.backgroundColor = new Animated.Value(0);
+        StatusBar.setBarStyle('light-content');
     }
 
+    componentDidMount() {
+        GoogleCast.showIntroductoryOverlay();
+
+        // Connection failed
+        GoogleCast.EventEmitter.addListener(GoogleCast.SESSION_START_FAILED, error => {
+            console.error(error);
+        });
+
+        // Media started playing
+        GoogleCast.EventEmitter.addListener(
+            GoogleCast.MEDIA_PLAYBACK_STARTED,
+            ({mediaStatus}) => {
+                this.setState({
+                    isCasting: true,
+                });
+            },
+        );
+
+        GoogleCast.EventEmitter.addListener(
+            GoogleCast.MEDIA_PLAYBACK_ENDED,
+            ({mediaStatus}) => {
+                this.setState({
+                    isCasting: false,
+                    casting: null,
+                });
+            },
+        );
+
+    }
+
+    // Start the cast with selected media passed by function parameter
+    startCast = (video, title, subtitle, duration, currentTime, image) => {
+        GoogleCast.getCastState().then(state => {
+            if (state === 'Connected') {
+                GoogleCast.castMedia({
+                    mediaUrl: video, // Stream media video uri
+                    imageUrl: image, // 'Image video representative uri
+                    title, // Media main title
+                    subtitle, // Media subtitle
+                    studio: 'ChromeCaster', // Media or app owner
+                    streamDuration: duration, // Stream duration in seconds
+                    playPosition: currentTime, // Stream play position in seconds
+                }).then(() => {
+                    GoogleCast.launchExpandedControls();
+                    this.setState({
+                        casting: video,
+                        title,
+                        subtitle,
+                        currentTime,
+                        duration,
+                    });
+                }).catch(err => {
+                    console.log(err);
+                });
+            } else if (state === 'NotConnected') {
+                GoogleCast.showCastPicker();
+            } else {
+                console.log(state);
+            }
+        });
+    };
+
     onMessage = event => {
-        console.log('_onMessage', JSON.parse(event.nativeEvent.data));
+        const {casting, currentUrl} = this.state;
+        console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
-        var videoSrc = res.message;
+        const {src, currentTime, duration, poster} = res.message;
+        if (!casting || casting !== 'videoSrc') {
+            this.startCast(src, currentUrl, 'ChromeCaster', duration, currentTime, poster);
+        }
     };
 
     backButtonHandler = () => {
@@ -49,8 +142,17 @@ class Browser extends Component {
                         var videos = document.querySelectorAll('video');
                         for(var i = 0; i < videos.length; i++) {
                             var video = videos[i];
-                            if(video.playing) {
-                                window.ReactNativeWebView.postMessage(JSON.stringify({type: "click", message: video.src}));
+                            if(video.playing && video.src) {
+                                window.ReactNativeWebView.postMessage(JSON.stringify({
+                                    type: "click",
+                                    message: {
+                                        src: video.src,
+                                        currentTime: video.currentTime,
+                                        duration: video.duration,
+                                        poster: video.poster
+                                    }
+                                }));
+                                video.pause();
                             }
                         }
                     }, 1000);
@@ -66,6 +168,9 @@ class Browser extends Component {
     };
 
     navigateUrl = () => {
+        if (this.state.firstSearch) {
+            this.animate();
+        }
         this.setState({
             url: this.parseSearchBarText(this.state.searchBarText),
         });
@@ -75,6 +180,7 @@ class Browser extends Component {
         this.setState({
             canGoBack: navState.canGoBack,
             canGoForward: navState.canGoForward,
+            currentUrl: navState.url,
             searchBarText: this.parseUrl(navState.url),
         });
     };
@@ -97,76 +203,128 @@ class Browser extends Component {
         return searchBarText.indexOf('.') > -1 ? addedPre : 'https://www.google.com/search?q=' + searchBarText;
     };
 
-    render() {
+    animate = () => {
+        StatusBar.setBarStyle('dark-content', true);
+        Animated.parallel([
+            Animated.timing(this.searchBar, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: false,
+            }),
+            Animated.timing(this.backgroundColor, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: false,
+            }),
+        ]).start(() => {
+            this.setState({firstSearch: false});
+        });
+    };
 
+    render() {
         const {
             searchBarText,
             url,
             canGoBack,
             canGoForward,
+            isCasting,
+            firstSearch,
         } = this.state;
 
+        const yVal = this.searchBar.interpolate({
+            inputRange: [0, 1],
+            outputRange: [windowHeight / 2 - 80, 0],
+        });
+
+        const backgroundColorVal = this.backgroundColor.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['#0065ff', '#ffffff'],
+        });
+
+        const animSearchBar = {
+            transform: [
+                {
+                    translateY: yVal,
+                },
+            ],
+            borderBottomWidth: firstSearch ? 0 : StyleSheet.hairlineWidth,
+        };
+
+        const animColor = {
+            backgroundColor: backgroundColorVal,
+        };
+
         return (
-            <View style={styles.container}>
-                <View style={styles.searchBar}>
-                    <View style={styles.searchInputContainer}>
-                        <FontAwesomeIcon color={'#646464'} icon={faSearch}/>
-                        <TextInput
-                            multiline={false}
-                            textAlign={'center'}
-                            onChangeText={this.searchBarTextChanged}
-                            style={styles.searchInput}
-                            value={searchBarText}
-                            clearTextOnFocus={true}
-                            placeholder={'Search or enter website name'}
-                            placeholderTextColor={'#646464'}
-                            onSubmitEditing={this.navigateUrl}
-                            autoCorrect={false}
-                            returnKeyType={'go'}
-                            autoCapitalize={'none'}
-                            enablesReturnKeyAutomatically={true}
-                        />
+            <Animated.View style={[styles.container, animColor]}>
+                <SafeAreaView style={styles.container}>
+                    {firstSearch &&
+                    <View style={styles.firstSearchContainer}>
+                        <Text style={styles.firstSearchText}>Use the search bar to find a video</Text>
+                        <Image style={styles.arrowImage} source={require('../../images/arrow.png')}/>
                     </View>
-                </View>
-                <WebView
-                    ref={this.setWebviewRef}
-                    allowsBackForwardNavigationGestures={true}
-                    onNavigationStateChange={this.onNavigationStateChange}
-                    style={styles.webview}
-                    source={{uri: url}}
-                    allowsInlineMediaPlayback={true}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    sharedCookiesEnabled={true}
-                    cacheEnabled={true}
-                    pullToRefreshEnabled={true}
-                    thirdPartyCookiesEnabled={true}
-                    scrollEnabled={true}
-                    originWhitelist={['*']}
-                    javaScriptCanOpenWindowsAutomatically={false}
-                    injectedJavaScript={this.detectVideoPlayingJs()}
-                    mediaPlaybackRequiresUserAction={true}
-                    onMessage={this.onMessage}
-                    startInLoadingState={true}
-                    renderLoading={() => (
-                        <ActivityIndicator
-                            color='black'
-                            size='large'
-                            style={styles.loadingIndicator}
-                        />
-                    )}
-                />
-                <View style={styles.navigationBar}>
-                    <TouchableOpacity style={styles.navigationButton} disabled={!canGoBack}
-                                      onPress={this.backButtonHandler}>
-                        <FontAwesomeIcon color={canGoBack ? '#646464' : '#cdcdcd'} size={28} icon={faAngleLeft}/>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.navigationButton} disabled={!canGoForward}
-                                      onPress={this.frontButtonHandler}>
-                        <FontAwesomeIcon color={canGoForward ? '#646464' : '#cdcdcd'} size={28} icon={faAngleRight}/>
-                    </TouchableOpacity>
-                </View>
-            </View>
+                    }
+                    <Animated.View style={[styles.searchBar, animSearchBar]}>
+                        <View style={styles.searchInputContainer}>
+                            <FontAwesomeIcon color={'#646464'} icon={faSearch}/>
+                            <TextInput
+                                multiline={false}
+                                textAlign={'center'}
+                                onChangeText={this.searchBarTextChanged}
+                                style={styles.searchInput}
+                                value={searchBarText}
+                                keyboardType={'web-search'}
+                                clearTextOnFocus={true}
+                                placeholder={'Search or enter website name'}
+                                placeholderTextColor={'#646464'}
+                                onSubmitEditing={this.navigateUrl}
+                                autoCorrect={false}
+                                returnKeyType={'go'}
+                                autoCapitalize={'none'}
+                                enablesReturnKeyAutomatically={true}
+                            />
+                        </View>
+                    </Animated.View>
+                    {!firstSearch &&
+                    <WebView
+                        ref={this.setWebviewRef}
+                        allowsBackForwardNavigationGestures={true}
+                        onNavigationStateChange={this.onNavigationStateChange}
+                        source={{uri: url}}
+                        allowsInlineMediaPlayback={true}
+                        javaScriptEnabled={true}
+                        domStorageEnabled={true}
+                        sharedCookiesEnabled={true}
+                        cacheEnabled={true}
+                        pullToRefreshEnabled={true}
+                        thirdPartyCookiesEnabled={true}
+                        scrollEnabled={true}
+                        originWhitelist={['*']}
+                        javaScriptCanOpenWindowsAutomatically={false}
+                        injectedJavaScript={this.detectVideoPlayingJs()}
+                        mediaPlaybackRequiresUserAction={true}
+                        allowsFullscreenVideo={false}
+                        onMessage={this.onMessage}
+                    />
+                    }
+                    {!firstSearch && isCasting &&
+                    <CasterControl/>
+                    }
+                    {!firstSearch &&
+                    <View style={styles.navigationBar}>
+                        <TouchableOpacity style={styles.navigationButton} disabled={!canGoBack}
+                                          onPress={this.backButtonHandler}>
+                            <FontAwesomeIcon color={canGoBack ? '#646464' : '#cdcdcd'} size={28} icon={faAngleLeft}/>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.navigationButton} disabled={!canGoForward}
+                                          onPress={this.frontButtonHandler}>
+                            <FontAwesomeIcon color={canGoForward ? '#646464' : '#cdcdcd'} size={28}
+                                             icon={faAngleRight}/>
+                        </TouchableOpacity>
+                        <CastButton style={styles.castButton}/>
+                    </View>
+                    }
+                </SafeAreaView>
+            </Animated.View>
         );
     }
 }
@@ -175,13 +333,31 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    firstSearchContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        top: windowHeight / 2 - 170,
+        width: '100%',
+    },
+    firstSearchText: {
+        marginBottom: 10,
+        fontSize: 18,
+        color: '#ffffff',
+        fontWeight: 'bold',
+    },
+    arrowImage: {
+        tintColor: '#ffffff',
+        height: 100,
+        width: 100,
+    },
     searchBar: {
         justifyContent: 'center',
         alignItems: 'center',
         flexDirection: 'row',
-        paddingLeft: '10%',
-        paddingRight: '10%',
-        paddingTop: 5,
+        paddingLeft: '5%',
+        paddingRight: '5%',
+        paddingTop: 10,
         paddingBottom: 10,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: '#cdcdcd',
@@ -201,16 +377,13 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         margin: 5,
-        fontSize: 15,
+        fontSize: 17,
         color: '#222222',
-    },
-    webview: {
-        flex: 1,
     },
     navigationBar: {
         flexDirection: 'row',
-        paddingLeft: '25%',
-        paddingRight: '25%',
+        paddingLeft: '10%',
+        paddingRight: '10%',
         paddingTop: 5,
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -219,9 +392,12 @@ const styles = StyleSheet.create({
     },
     navigationButton: {
         padding: 5,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    loadingIndicator: {
-        flex: 1,
+    castButton: {
+        width: 30,
+        height: 30,
     },
 });
 
