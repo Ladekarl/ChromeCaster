@@ -13,6 +13,7 @@ class CasterControl extends Component {
             playerState: 0,
             position: 0,
             duration: 0,
+            isCasting: false,
         };
     }
 
@@ -25,6 +26,25 @@ class CasterControl extends Component {
         GoogleCast.EventEmitter.addListener(
             GoogleCast.MEDIA_PROGRESS_UPDATED,
             this.progressListener,
+        );
+
+        GoogleCast.EventEmitter.addListener(
+            GoogleCast.MEDIA_PLAYBACK_STARTED,
+            ({mediaStatus}) => {
+                this.setState({
+                    isCasting: true,
+                });
+            },
+        );
+
+        GoogleCast.EventEmitter.addListener(
+            GoogleCast.MEDIA_PLAYBACK_ENDED,
+            ({mediaStatus}) => {
+                this.setState({
+                    isCasting: false,
+                    casting: null,
+                });
+            },
         );
     }
 

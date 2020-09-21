@@ -1,5 +1,7 @@
 import React, {Component} from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     Animated,
     Dimensions,
     Image,
@@ -17,8 +19,7 @@ import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
 import {faAngleLeft, faAngleRight, faSearch} from '@fortawesome/free-solid-svg-icons';
 import GoogleCast, {CastButton} from 'react-native-google-cast';
 import CasterControl from './CasterControl';
-
-const windowHeight = Dimensions.get('window').height;
+import BlacklistService from '../Services/BlacklistService';
 
 class Browser extends Component {
     webviewRef;
@@ -38,14 +39,11 @@ class Browser extends Component {
             currentTime: 0,
             isCasting: false,
             firstSearch: true,
+            loading: false,
         };
 
         this.searchBar = new Animated.Value(0);
         this.backgroundColor = new Animated.Value(0);
-        if (Platform.OS === 'android') {
-            StatusBar.setBackgroundColor('#0065ff');
-        }
-        StatusBar.setBarStyle('light-content');
     }
 
     componentDidMount() {
@@ -74,6 +72,9 @@ class Browser extends Component {
             },
         );
 
+        Dimensions.addEventListener('change', () => {
+            this.forceUpdate();
+        });
     }
 
     // Start the cast with selected media passed by function parameter
@@ -109,11 +110,11 @@ class Browser extends Component {
     };
 
     onMessage = event => {
-        const {casting, currentUrl, searchBarText} = this.state;
+        const {casting, isCasting, currentUrl, searchBarText} = this.state;
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration, poster} = res.message;
-        if (!casting || casting !== 'videoSrc') {
+        if (!isCasting || !casting || casting !== 'videoSrc') {
             this.startCast(src, searchBarText, currentUrl, duration, currentTime, poster);
         }
     };
@@ -140,6 +141,8 @@ class Browser extends Component {
                         }
                     })
                     setInterval(function() {
+                        window.open = function() {};
+                        window.alert = function() {};
                         var videos = document.querySelectorAll('video');
                         for(var i = 0; i < videos.length; i++) {
                             var video = videos[i];
@@ -191,17 +194,26 @@ class Browser extends Component {
     };
 
     parseUrl = url => {
-        return url
-            .replace('http://', '')
-            .replace('https://', '')
-            .replace('www.', '')
-            .replace('wwv.', '')
-            .split(/[/?#]/)[0];
+        return BlacklistService.extractHostname(url);
     };
 
     parseSearchBarText = searchBarText => {
-        const addedPre = searchBarText.indexOf('://') > -1 ? searchBarText : 'https://' + searchBarText;
-        return searchBarText.indexOf('.') > -1 ? addedPre : 'https://www.google.com/search?q=' + searchBarText;
+        let buildUrl = 'https://';
+        const protocolIndex = searchBarText.indexOf('://');
+        if (searchBarText.indexOf('https://www.') > -1) {
+            buildUrl = searchBarText;
+        } else if (searchBarText.indexOf('www.') > -1) {
+            buildUrl += searchBarText;
+        } else if (protocolIndex > -1) {
+            buildUrl += 'www.' + searchBarText.substr(protocolIndex + 3, searchBarText.length);
+        } else {
+            buildUrl += 'www.' + searchBarText;
+        }
+        if (searchBarText[searchBarText.length - 1] !== '/') {
+            buildUrl += '/';
+        }
+
+        return searchBarText.indexOf('.') > -1 ? buildUrl : 'https://www.google.com/search?q=' + encodeURI(searchBarText);
     };
 
     animate = () => {
@@ -225,6 +237,50 @@ class Browser extends Component {
         });
     };
 
+    onShouldStartLoadWithRequest = (request) => {
+        const {url} = this.state;
+        if (!request || !request.url) {
+            return true;
+        }
+
+        const requestUrl = request.url;
+
+        if (BlacklistService.isBlacklistedUrl(requestUrl)) {
+            return false;
+        }
+
+        if (requestUrl === url) {
+            return true;
+        }
+
+        Alert.alert(
+            'Are you sure?',
+            'You are navigating to\n' + request.url,
+            [
+                {
+                    text: 'Cancel',
+                    onPress: () => {
+                    },
+                    style: 'cancel',
+                },
+                {text: 'OK', onPress: () => this.setState({url: requestUrl})},
+            ],
+            {cancelable: false});
+
+        return false;
+    };
+
+    showLoading = () => {
+        this.setState({
+            loading: true,
+        });
+    };
+    hideLoading = () => {
+        this.setState({
+            loading: false,
+        });
+    };
+
     render() {
         const {
             searchBarText,
@@ -233,20 +289,23 @@ class Browser extends Component {
             canGoForward,
             isCasting,
             firstSearch,
+            loading,
         } = this.state;
 
         if (Platform.OS === 'ios' && !firstSearch) {
             GoogleCast.showIntroductoryOverlay();
         }
 
+        const windowHeight = Dimensions.get('window').height;
+
         const yVal = this.searchBar.interpolate({
             inputRange: [0, 1],
-            outputRange: [windowHeight / 2 - 80, 0],
+            outputRange: [windowHeight / 2 + 30, 0],
         });
 
         const backgroundColorVal = this.backgroundColor.interpolate({
             inputRange: [0, 1],
-            outputRange: ['#0065ff', '#ffffff'],
+                outputRange: ['#0065ff', '#ffffff'],
         });
 
         const animSearchBar = {
@@ -266,7 +325,9 @@ class Browser extends Component {
             <Animated.View style={[styles.container, animColor]}>
                 <SafeAreaView style={styles.container}>
                     {firstSearch &&
-                    <View style={styles.firstSearchContainer}>
+                    <View style={[styles.firstSearchContainer, {
+                        top: windowHeight / 2 - 110,
+                    }]}>
                         <Text style={styles.firstSearchText}>Use the search bar to find a video</Text>
                         <Image style={styles.arrowImage} source={require('../../images/arrow.png')}/>
                     </View>
@@ -298,9 +359,12 @@ class Browser extends Component {
                         ref={this.setWebviewRef}
                         allowsBackForwardNavigationGestures={true}
                         onNavigationStateChange={this.onNavigationStateChange}
+                        onLoadStart={this.showLoading}
+                        onLoadEnd={this.hideLoading}
                         source={{uri: url}}
                         allowsInlineMediaPlayback={true}
                         javaScriptEnabled={true}
+                        onShouldStartLoadWithRequest={this.onShouldStartLoadWithRequest}
                         domStorageEnabled={true}
                         sharedCookiesEnabled={true}
                         cacheEnabled={true}
@@ -332,6 +396,11 @@ class Browser extends Component {
                         <CastButton style={styles.castButton}/>
                     </View>
                     }
+                    {loading &&
+                    <View style={styles.activityContainer}>
+                        <ActivityIndicator size={'large'} color={'#646464'}/>
+                    </View>
+                    }
                 </SafeAreaView>
             </Animated.View>
         );
@@ -346,7 +415,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         position: 'absolute',
-        top: windowHeight / 2 - 250,
         width: '100%',
     },
     firstSearchText: {
@@ -410,6 +478,15 @@ const styles = StyleSheet.create({
     castButton: {
         width: 30,
         height: 30,
+    },
+    activityContainer: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
 
