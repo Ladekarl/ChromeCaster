@@ -6,8 +6,8 @@ class BlacklistService {
     static async loadBlacklist() {
         const response = await fetch('https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts');
         let text = await response.text();
-        this.blacklist = this.parseBlacklistText(text);
-        return this.blacklist;
+        BlacklistService.blacklist = BlacklistService.parseBlacklistText(text);
+        return BlacklistService.blacklist;
     }
 
     static parseBlacklistText(blacklistText) {
@@ -22,15 +22,15 @@ class BlacklistService {
     }
 
     static isBlacklistedUrl(url) {
-        const hostname = this.extractHostname(url);
-        return this.isBlacklistedHostname(hostname);
+        const hostname = BlacklistService.extractHostname(url);
+        return BlacklistService.isBlacklistedHostname(hostname);
     }
 
     static isBlacklistedHostname(hostname) {
-        if (!this.blacklist) {
+        if (!BlacklistService.blacklist) {
             return false;
         }
-        return this.blacklist.indexOf(hostname) > -1;
+        return BlacklistService.blacklist.indexOf(hostname) > -1;
     }
 
     static extractHostname(url) {
@@ -46,7 +46,7 @@ class BlacklistService {
     }
 
     static extractDomainName(url) {
-        return psl.get(this.extractHostname(url));
+        return psl.get(BlacklistService.extractHostname(url));
     }
 }
 

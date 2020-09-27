@@ -21,6 +21,7 @@ import GoogleCast, {CastButton} from 'react-native-google-cast';
 import CasterControl from './CasterControl';
 import BlacklistService from '../Services/BlacklistService';
 import logoImage from '../../images/logo.png';
+import VideoService from '../Services/VideoService';
 
 const logoImageUri = Image.resolveAssetSource(logoImage).uri;
 
@@ -57,25 +58,20 @@ class Browser extends Component {
             console.error(error);
         });
 
-        // Media started playing
         GoogleCast.EventEmitter.addListener(
-            GoogleCast.MEDIA_PLAYBACK_STARTED,
+            GoogleCast.MEDIA_STATUS_UPDATED,
             ({mediaStatus}) => {
+                const {casting} = this.state;
+                const playerState = mediaStatus.playerState;
+                const castingStates = [2, 3];
+                const isCasting = castingStates.indexOf(playerState) > -1;
                 this.setState({
-                    isCasting: true,
+                    isCasting,
+                    casting: isCasting ? casting : null,
                 });
             },
         );
 
-        GoogleCast.EventEmitter.addListener(
-            GoogleCast.MEDIA_PLAYBACK_ENDED,
-            ({mediaStatus}) => {
-                this.setState({
-                    isCasting: false,
-                    casting: null,
-                });
-            },
-        );
 
         Dimensions.addEventListener('change', () => {
             this.forceUpdate();
@@ -84,6 +80,11 @@ class Browser extends Component {
 
     // Start the cast with selected media passed by function parameter
     startCast = (video, title, subtitle, duration, currentTime) => {
+        const mimeType = VideoService.getMimetype(video);
+        if (!mimeType) {
+            Alert.alert('Not supported', 'This media type is not supported');
+            return;
+        }
         GoogleCast.getCastState().then(state => {
             if (state === 'Connected') {
                 GoogleCast.castMedia({
@@ -91,6 +92,7 @@ class Browser extends Component {
                     imageUrl: logoImageUri, //Image video representative uri
                     title, // Media main title
                     subtitle, // Media subtitle
+                    contentType: mimeType,
                     studio: 'Chromecaster', // Media or app owner
                     streamDuration: duration, // Stream duration in seconds
                     playPosition: currentTime, // Stream play position in seconds
@@ -105,6 +107,7 @@ class Browser extends Component {
                     });
                 }).catch(err => {
                     console.log(err);
+                    Alert.alert('Not connected', 'Please reconnect to your chromecast');
                 });
             } else if (state === 'NotConnected') {
                 GoogleCast.showCastPicker();
@@ -119,12 +122,13 @@ class Browser extends Component {
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration} = res.message;
+
         if (!isCasting || !casting || casting !== 'videoSrc') {
             this.startCast(src,
                 searchBarText,
                 currentUrl,
                 duration ? duration : undefined,
-                currentTime ? currentTime : 0);
+                duration ? currentTime : undefined);
         }
     };
 
@@ -155,14 +159,15 @@ class Browser extends Component {
                         var videos = document.querySelectorAll('video');
                         for(var i = 0; i < videos.length; i++) {
                             var video = videos[i];
-                            if(video.playing && video.src) {
+                            if(video.playing && video.currentSrc) {
                                 window.ReactNativeWebView.postMessage(JSON.stringify({
                                     type: "click",
                                     message: {
-                                        src: video.src,
+                                        src: video.currentSrc,
                                         currentTime: video.currentTime,
                                         duration: video.duration,
-                                        poster: video.poster
+                                        poster: video.poster,
+                                        type: video.type
                                     }
                                 }));
                                 video.pause();
@@ -363,10 +368,14 @@ class Browser extends Component {
             backgroundColor: backgroundColorVal,
         };
 
-        const selection = firstSearch || !selectionEnd ? undefined : {
-            start: selectionStart ?? 0,
-            end: selectionEnd,
-        };
+        const selection = (firstSearch ||
+            typeof selectionEnd === 'undefined' ||
+            typeof selectionStart === 'undefined' ||
+            selectionEnd !== searchBarText.length) ?
+            undefined : {
+                start: selectionStart,
+                end: selectionEnd,
+            };
 
         return (
             <Animated.View style={[styles.container, animColor]}>
@@ -411,8 +420,6 @@ class Browser extends Component {
                         ref={this.setWebviewRef}
                         allowsBackForwardNavigationGestures={true}
                         onNavigationStateChange={this.onNavigationStateChange}
-                        onLoadStart={this.showLoading}
-                        onLoadEnd={this.hideLoading}
                         source={{uri: url}}
                         allowsInlineMediaPlayback={true}
                         javaScriptEnabled={true}
@@ -423,6 +430,7 @@ class Browser extends Component {
                         pullToRefreshEnabled={true}
                         thirdPartyCookiesEnabled={true}
                         scrollEnabled={true}
+                        renderError={(url) => Alert.alert('Error', 'Cannot go to that page')}
                         originWhitelist={['*']}
                         javaScriptCanOpenWindowsAutomatically={false}
                         injectedJavaScript={this.detectVideoPlayingJs()}

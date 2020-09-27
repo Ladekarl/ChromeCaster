@@ -1,7 +1,7 @@
 import React, {Component} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
-import {faPause, faPlay, faSlidersH, faStop} from '@fortawesome/free-solid-svg-icons';
+import {faPause, faPlay, faAngleUp, faStop} from '@fortawesome/free-solid-svg-icons';
 import GoogleCast from 'react-native-google-cast';
 
 class CasterControl extends Component {
@@ -12,8 +12,7 @@ class CasterControl extends Component {
         this.state = {
             playerState: 0,
             position: 0,
-            duration: 0,
-            isCasting: false,
+            duration: 0
         };
     }
 
@@ -26,25 +25,6 @@ class CasterControl extends Component {
         GoogleCast.EventEmitter.addListener(
             GoogleCast.MEDIA_PROGRESS_UPDATED,
             this.progressListener,
-        );
-
-        GoogleCast.EventEmitter.addListener(
-            GoogleCast.MEDIA_PLAYBACK_STARTED,
-            ({mediaStatus}) => {
-                this.setState({
-                    isCasting: true,
-                });
-            },
-        );
-
-        GoogleCast.EventEmitter.addListener(
-            GoogleCast.MEDIA_PLAYBACK_ENDED,
-            ({mediaStatus}) => {
-                this.setState({
-                    isCasting: false,
-                    casting: null,
-                });
-            },
         );
     }
 
@@ -96,7 +76,8 @@ class CasterControl extends Component {
         const durationText = this.formatTimeText(duration);
 
         return (
-            <View style={styles.casterContainer}>
+            <TouchableOpacity style={styles.casterContainer}
+                              onPress={this.launchOptions}>
                 <View style={styles.controlContainer}>
                     {playerState !== 2 &&
                     <TouchableOpacity style={styles.controlButton}
@@ -123,10 +104,10 @@ class CasterControl extends Component {
                 <View style={styles.settingsContainer}>
                     <TouchableOpacity style={styles.controlButton}
                                       onPress={this.launchOptions}>
-                        <FontAwesomeIcon color={'#0065ff'} size={25} icon={faSlidersH}/>
+                        <FontAwesomeIcon color={'#0065ff'} size={25} icon={faAngleUp}/>
                     </TouchableOpacity>
                 </View>
-            </View>
+            </TouchableOpacity>
         );
     }
 
