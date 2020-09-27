@@ -20,6 +20,9 @@ import {faAngleLeft, faAngleRight, faSearch} from '@fortawesome/free-solid-svg-i
 import GoogleCast, {CastButton} from 'react-native-google-cast';
 import CasterControl from './CasterControl';
 import BlacklistService from '../Services/BlacklistService';
+import logoImage from '../../images/logo.png';
+
+const logoImageUri = Image.resolveAssetSource(logoImage).uri;
 
 class Browser extends Component {
     webviewRef;
@@ -28,10 +31,10 @@ class Browser extends Component {
         super(props);
         this.state = {
             searchBarText: null,
-            url: 'https://google.com',
+            url: 'https://www.google.com',
             canGoBack: false,
             canGoForward: false,
-            currentUrl: null,
+            currentUrl: 'https://google.com',
             casting: null,
             title: '',
             subtitle: '',
@@ -40,6 +43,8 @@ class Browser extends Component {
             isCasting: false,
             firstSearch: true,
             loading: false,
+            selectionStart: undefined,
+            selectionEnd: undefined,
         };
 
         this.searchBar = new Animated.Value(0);
@@ -78,12 +83,12 @@ class Browser extends Component {
     }
 
     // Start the cast with selected media passed by function parameter
-    startCast = (video, title, subtitle, duration, currentTime, image) => {
+    startCast = (video, title, subtitle, duration, currentTime) => {
         GoogleCast.getCastState().then(state => {
             if (state === 'Connected') {
                 GoogleCast.castMedia({
                     mediaUrl: video, // Stream media video uri
-                    imageUrl: image, // 'Image video representative uri
+                    imageUrl: logoImageUri, //Image video representative uri
                     title, // Media main title
                     subtitle, // Media subtitle
                     studio: 'Chromecaster', // Media or app owner
@@ -113,9 +118,13 @@ class Browser extends Component {
         const {casting, isCasting, currentUrl, searchBarText} = this.state;
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
-        const {src, currentTime, duration, poster} = res.message;
+        const {src, currentTime, duration} = res.message;
         if (!isCasting || !casting || casting !== 'videoSrc') {
-            this.startCast(src, searchBarText, currentUrl, duration, currentTime, poster);
+            this.startCast(src,
+                searchBarText,
+                currentUrl,
+                duration ? duration : undefined,
+                currentTime ? currentTime : 0);
         }
     };
 
@@ -172,11 +181,13 @@ class Browser extends Component {
     };
 
     navigateUrl = () => {
-        if (this.state.firstSearch) {
+        const {firstSearch, searchBarText} = this.state;
+
+        if (firstSearch) {
             this.animate();
         }
         this.setState({
-            url: this.parseSearchBarText(this.state.searchBarText),
+            url: this.parseSearchBarText(searchBarText),
         });
     };
 
@@ -194,7 +205,7 @@ class Browser extends Component {
     };
 
     parseUrl = url => {
-        return BlacklistService.extractHostname(url);
+        return BlacklistService.extractDomainName(url);
     };
 
     parseSearchBarText = searchBarText => {
@@ -209,11 +220,8 @@ class Browser extends Component {
         } else {
             buildUrl += 'www.' + searchBarText;
         }
-        if (searchBarText[searchBarText.length - 1] !== '/') {
-            buildUrl += '/';
-        }
 
-        return searchBarText.indexOf('.') > -1 ? buildUrl : 'https://www.google.com/search?q=' + encodeURI(searchBarText);
+        return searchBarText.indexOf('.') > -1 ? buildUrl : 'https://www.google.com/search?q=' + encodeURIComponent(searchBarText);
     };
 
     animate = () => {
@@ -249,7 +257,10 @@ class Browser extends Component {
             return false;
         }
 
-        if (requestUrl === url) {
+        const requestHostName = BlacklistService.extractHostname(requestUrl);
+        const urlHostName = BlacklistService.extractHostname(url);
+
+        if (requestHostName === urlHostName) {
             return true;
         }
 
@@ -275,9 +286,38 @@ class Browser extends Component {
             loading: true,
         });
     };
+
     hideLoading = () => {
         this.setState({
             loading: false,
+        });
+    };
+
+    onFocusTextInput = () => {
+        const {currentUrl, firstSearch} = this.state;
+        if (!firstSearch) {
+            this.setState({
+                searchBarText: currentUrl,
+                selectionStart: 0,
+                selectionEnd: currentUrl.length,
+            });
+        }
+    };
+
+    onBlurTextInput = () => {
+        const {currentUrl} = this.state;
+        const searchBarText = this.parseUrl(currentUrl);
+        this.setState({
+            searchBarText,
+            selectionStart: undefined,
+            selectionEnd: undefined,
+        });
+    };
+
+    onSelectionChangeTextInput = () => {
+        this.setState({
+            selectionStart: undefined,
+            selectionEnd: undefined,
         });
     };
 
@@ -290,6 +330,8 @@ class Browser extends Component {
             isCasting,
             firstSearch,
             loading,
+            selectionStart,
+            selectionEnd,
         } = this.state;
 
         if (Platform.OS === 'ios' && !firstSearch) {
@@ -300,12 +342,12 @@ class Browser extends Component {
 
         const yVal = this.searchBar.interpolate({
             inputRange: [0, 1],
-            outputRange: [windowHeight / 2 + 30, 0],
+            outputRange: [windowHeight / 4 + 30, 0],
         });
 
         const backgroundColorVal = this.backgroundColor.interpolate({
             inputRange: [0, 1],
-                outputRange: ['#0065ff', '#ffffff'],
+            outputRange: ['#0065ff', '#ffffff'],
         });
 
         const animSearchBar = {
@@ -321,12 +363,17 @@ class Browser extends Component {
             backgroundColor: backgroundColorVal,
         };
 
+        const selection = firstSearch || !selectionEnd ? undefined : {
+            start: selectionStart ?? 0,
+            end: selectionEnd,
+        };
+
         return (
             <Animated.View style={[styles.container, animColor]}>
                 <SafeAreaView style={styles.container}>
                     {firstSearch &&
                     <View style={[styles.firstSearchContainer, {
-                        top: windowHeight / 2 - 110,
+                        top: windowHeight / 4 - 110,
                     }]}>
                         <Text style={styles.firstSearchText}>Use the search bar to find a video</Text>
                         <Image style={styles.arrowImage} source={require('../../images/arrow.png')}/>
@@ -340,10 +387,15 @@ class Browser extends Component {
                                 textAlign={'center'}
                                 onChangeText={this.searchBarTextChanged}
                                 underlineColorAndroid={'transparent'}
+                                allowFontScaling={false}
+                                onFocus={this.onFocusTextInput}
+                                onBlur={this.onBlurTextInput}
+                                onSelectionChange={this.onSelectionChangeTextInput}
+                                selection={selection}
+                                autoFocus={true}
                                 style={styles.searchInput}
                                 value={searchBarText}
                                 keyboardType={'web-search'}
-                                clearTextOnFocus={true}
                                 placeholder={'Search or enter website name'}
                                 placeholderTextColor={'#646464'}
                                 onSubmitEditing={this.navigateUrl}

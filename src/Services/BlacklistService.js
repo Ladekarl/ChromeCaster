@@ -1,3 +1,5 @@
+import psl from 'psl';
+
 class BlacklistService {
     static blacklist = [];
 
@@ -41,6 +43,10 @@ class BlacklistService {
         hostname = hostname.split(':')[0];
         hostname = hostname.split('?')[0];
         return hostname;
+    }
+
+    static extractDomainName(url) {
+        return psl.get(this.extractHostname(url));
     }
 }
 
