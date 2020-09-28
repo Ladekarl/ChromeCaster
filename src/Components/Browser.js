@@ -46,6 +46,7 @@ class Browser extends Component {
             loading: false,
             selectionStart: undefined,
             selectionEnd: undefined,
+            shouldSelect: false,
         };
 
         this.searchBar = new Animated.Value(0);
@@ -82,8 +83,7 @@ class Browser extends Component {
     startCast = (video, title, subtitle, duration, currentTime) => {
         const mimeType = VideoService.getMimetype(video);
         if (!mimeType) {
-            Alert.alert('Not supported', 'This media type is not supported');
-            return;
+            Alert.alert('Media type not recognized', 'Casting may not work');
         }
         GoogleCast.getCastState().then(state => {
             if (state === 'Connected') {
@@ -92,7 +92,7 @@ class Browser extends Component {
                     imageUrl: logoImageUri, //Image video representative uri
                     title, // Media main title
                     subtitle, // Media subtitle
-                    contentType: mimeType,
+                    contentType: mimeType ?? 'video/mp4',
                     studio: 'Chromecaster', // Media or app owner
                     streamDuration: duration, // Stream duration in seconds
                     playPosition: currentTime, // Stream play position in seconds
@@ -182,18 +182,24 @@ class Browser extends Component {
     searchBarTextChanged = (text) => {
         this.setState({
             searchBarText: text,
+            shouldSelect: false,
         });
     };
 
     navigateUrl = () => {
-        const {firstSearch, searchBarText} = this.state;
+        const {firstSearch, searchBarText, url, currentUrl} = this.state;
 
         if (firstSearch) {
             this.animate();
         }
-        this.setState({
-            url: this.parseSearchBarText(searchBarText),
-        });
+        const newUrl = this.parseSearchBarText(searchBarText);
+        if (newUrl === url || newUrl === currentUrl) {
+            this.webviewRef.reload();
+        } else {
+            this.setState({
+                url: newUrl,
+            });
+        }
     };
 
     onNavigationStateChange = (navState) => {
@@ -305,6 +311,7 @@ class Browser extends Component {
                 searchBarText: currentUrl,
                 selectionStart: 0,
                 selectionEnd: currentUrl.length,
+                shouldSelect: true,
             });
         }
     };
@@ -316,13 +323,15 @@ class Browser extends Component {
             searchBarText,
             selectionStart: undefined,
             selectionEnd: undefined,
+            shouldSelect: false,
         });
     };
 
-    onSelectionChangeTextInput = () => {
+    onSelectionChangeTextInput = ({nativeEvent: {selection: {start, end}}}) => {
         this.setState({
-            selectionStart: undefined,
-            selectionEnd: undefined,
+            selectionStart: start,
+            selectionEnd: end,
+            shouldSelect: true,
         });
     };
 
@@ -337,6 +346,7 @@ class Browser extends Component {
             loading,
             selectionStart,
             selectionEnd,
+            shouldSelect,
         } = this.state;
 
         if (Platform.OS === 'ios' && !firstSearch) {
@@ -368,14 +378,10 @@ class Browser extends Component {
             backgroundColor: backgroundColorVal,
         };
 
-        const selection = (firstSearch ||
-            typeof selectionEnd === 'undefined' ||
-            typeof selectionStart === 'undefined' ||
-            selectionEnd !== searchBarText.length) ?
-            undefined : {
-                start: selectionStart,
-                end: selectionEnd,
-            };
+        const selection = (!firstSearch && shouldSelect) ? {
+            start: selectionStart,
+            end: selectionEnd,
+        } : undefined;
 
         return (
             <Animated.View style={[styles.container, animColor]}>
@@ -396,11 +402,11 @@ class Browser extends Component {
                                 textAlign={'center'}
                                 onChangeText={this.searchBarTextChanged}
                                 underlineColorAndroid={'transparent'}
+                                decelerationRate={'normal'}
                                 allowFontScaling={false}
                                 onFocus={this.onFocusTextInput}
                                 onBlur={this.onBlurTextInput}
                                 onSelectionChange={this.onSelectionChangeTextInput}
-                                selection={selection}
                                 autoFocus={true}
                                 style={styles.searchInput}
                                 value={searchBarText}
@@ -412,6 +418,7 @@ class Browser extends Component {
                                 returnKeyType={'go'}
                                 autoCapitalize={'none'}
                                 enablesReturnKeyAutomatically={true}
+                                selection={selection}
                             />
                         </View>
                     </Animated.View>
@@ -437,6 +444,7 @@ class Browser extends Component {
                         mediaPlaybackRequiresUserAction={true}
                         allowsFullscreenVideo={false}
                         onMessage={this.onMessage}
+                        useWebKit={true}
                     />
                     }
                     {!firstSearch && isCasting &&
@@ -470,6 +478,7 @@ class Browser extends Component {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        overflow: 'hidden',
     },
     firstSearchContainer: {
         justifyContent: 'center',
