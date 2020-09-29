@@ -16,26 +16,28 @@ import {
 } from 'react-native';
 import {WebView} from 'react-native-webview';
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
-import {faAngleLeft, faAngleRight, faSearch} from '@fortawesome/free-solid-svg-icons';
+import {faAngleLeft, faAngleRight, faHome, faRedo, faSearch} from '@fortawesome/free-solid-svg-icons';
 import GoogleCast, {CastButton} from 'react-native-google-cast';
 import CasterControl from './CasterControl';
 import BlacklistService from '../Services/BlacklistService';
 import logoImage from '../../images/logo.png';
 import VideoService from '../Services/VideoService';
+import WhitelistService from '../Services/WhitelistService';
 
 const logoImageUri = Image.resolveAssetSource(logoImage).uri;
 
 class Browser extends Component {
     webviewRef;
+    alreadyAskedUrls = [];
 
     constructor(props) {
         super(props);
         this.state = {
             searchBarText: null,
-            url: 'https://www.google.com',
+            url: 'https://www.google.com/',
             canGoBack: false,
             canGoForward: false,
-            currentUrl: 'https://google.com',
+            currentUrl: 'https://google.com/',
             casting: null,
             title: '',
             subtitle: '',
@@ -51,6 +53,7 @@ class Browser extends Component {
 
         this.searchBar = new Animated.Value(0);
         this.backgroundColor = new Animated.Value(0);
+        this.padding = new Animated.Value(0);
     }
 
     componentDidMount() {
@@ -79,56 +82,100 @@ class Browser extends Component {
         });
     }
 
-    // Start the cast with selected media passed by function parameter
-    startCast = (video, title, subtitle, duration, currentTime) => {
-        const mimeType = VideoService.getMimetype(video);
-        if (!mimeType) {
-            Alert.alert('Media type not recognized', 'Casting may not work');
-        }
+    startCast = (video, title, subtitle, duration, currentTime, mimeType = 'video/mp4') => {
+        const internalStartCast = () => {
+            GoogleCast.castMedia({
+                mediaUrl: video,
+                imageUrl: logoImageUri,
+                title,
+                subtitle,
+                contentType: mimeType,
+                isLive: true,
+                studio: 'Chromecaster',
+                streamDuration: duration,
+                playPosition: currentTime,
+            }).then(() => {
+                this.setState({
+                    casting: video,
+                    title,
+                    subtitle,
+                    currentTime,
+                    duration,
+                });
+            }).catch(err => {
+                console.log(err);
+                Alert.alert('Not connected', 'Please reconnect your chromecast');
+            });
+        };
+
         GoogleCast.getCastState().then(state => {
             if (state === 'Connected') {
-                GoogleCast.castMedia({
-                    mediaUrl: video, // Stream media video uri
-                    imageUrl: logoImageUri, //Image video representative uri
-                    title, // Media main title
-                    subtitle, // Media subtitle
-                    contentType: mimeType ?? 'video/mp4',
-                    studio: 'Chromecaster', // Media or app owner
-                    streamDuration: duration, // Stream duration in seconds
-                    playPosition: currentTime, // Stream play position in seconds
-                }).then(() => {
-                    GoogleCast.launchExpandedControls();
-                    this.setState({
-                        casting: video,
-                        title,
-                        subtitle,
-                        currentTime,
-                        duration,
-                    });
-                }).catch(err => {
-                    console.log(err);
-                    Alert.alert('Not connected', 'Please reconnect to your chromecast');
-                });
+                internalStartCast();
             } else if (state === 'NotConnected') {
+                GoogleCast.EventEmitter.addListener(GoogleCast.SESSION_STARTED, () => {
+                    internalStartCast();
+                });
                 GoogleCast.showCastPicker();
             } else {
                 console.log(state);
+                Alert.alert('No devices available', 'Could not find your chromecast');
             }
         });
     };
 
     onMessage = event => {
-        const {casting, isCasting, currentUrl, searchBarText} = this.state;
+        const {casting, currentUrl, searchBarText} = this.state;
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration} = res.message;
 
-        if (!isCasting || !casting || casting !== 'videoSrc') {
-            this.startCast(src,
-                searchBarText,
-                currentUrl,
-                duration ? duration : undefined,
-                duration ? currentTime : undefined);
+        const alreadyAsked = this.alreadyAskedUrls.indexOf(src) > -1;
+
+        if (casting !== src && !alreadyAsked) {
+            this.alreadyAskedUrls.push(src);
+            const durationVal = duration ? duration : undefined;
+            const currentTimeVal = duration ? currentTime : undefined;
+            const mimeType = VideoService.getMimetype(src);
+
+            const alertTitle = mimeType ?
+                'Ready to cast' :
+                'Media type not recognized';
+            const alertMessage = mimeType ?
+                'Would you like to cast\n' + currentUrl + '?' :
+                'Would you like to cast\n' + currentUrl + '\nanyway?';
+
+            const startCasting = () => {
+                this.startCast(src,
+                    searchBarText,
+                    currentUrl,
+                    durationVal,
+                    currentTimeVal,
+                    mimeType);
+
+                const pauseVideoCode = `
+                    window.postMessage('', '*');
+                    true;
+                `;
+                if (this.webviewRef) {
+                    this.webviewRef.injectJavaScript(pauseVideoCode);
+                }
+            };
+
+            Alert.alert(
+                alertTitle,
+                alertMessage,
+                [
+                    {
+                        text: 'Cancel',
+                        onPress: () => {
+                        },
+                        style: 'cancel',
+                    },
+                    {
+                        text: 'OK', onPress: () => startCasting(),
+                    },
+                ],
+                {cancelable: false});
         }
     };
 
@@ -148,11 +195,6 @@ class Browser extends Component {
         return `
             (function () {
                 window.addEventListener("load", function() { 
-                    Object.defineProperty(HTMLMediaElement.prototype, 'playing', {
-                        get: function(){
-                            return !!(this.currentTime > 0 && !this.paused && !this.ended && this.readyState > 2);
-                        }
-                    })
                     setInterval(function() {
                         window.open = function() {};
                         window.alert = function() {};
@@ -170,7 +212,6 @@ class Browser extends Component {
                                         type: video.type
                                     }
                                 }));
-                                video.pause();
                             }
                         }
                     }, 1000);
@@ -178,6 +219,24 @@ class Browser extends Component {
             })();
         `;
     };
+
+    pauseVideoPlayingJs = () => `
+        Object.defineProperty(HTMLMediaElement.prototype, 'playing', {
+            get: function(){
+                return !!(this.currentTime > 0 && !this.paused && !this.ended && this.readyState > 2);
+            }
+        })
+        window.addEventListener('message', function (e) {
+            var videos = document.querySelectorAll('video');
+            for (var i = 0; i < videos.length; i++) {
+                var video = videos[i];
+                if (video.playing) {
+                    video.pause();
+                }
+            }
+        });
+        true;
+        `;
 
     searchBarTextChanged = (text) => {
         this.setState({
@@ -203,11 +262,15 @@ class Browser extends Component {
     };
 
     onNavigationStateChange = (navState) => {
+        const {canGoBack, canGoForward, url} = navState;
         this.setState({
-            canGoBack: navState.canGoBack,
-            canGoForward: navState.canGoForward,
-            currentUrl: navState.url,
-            searchBarText: this.parseUrl(navState.url),
+            canGoBack,
+            canGoForward,
+            currentUrl: url,
+            searchBarText: this.parseUrl(url),
+        }, () => {
+            WhitelistService.addToWhitelist(url);
+            this.alreadyAskedUrls = [];
         });
     };
 
@@ -251,6 +314,11 @@ class Browser extends Component {
                 duration: 500,
                 useNativeDriver: false,
             }),
+            Animated.timing(this.padding, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: false,
+            }),
         ]).start(() => {
             this.setState({firstSearch: false});
         });
@@ -258,21 +326,27 @@ class Browser extends Component {
 
     onShouldStartLoadWithRequest = (request) => {
         const {url} = this.state;
+        console.log('REQUEST:');
+        console.log(request);
+
         if (!request || !request.url) {
             return true;
         }
 
         const requestUrl = request.url;
 
-        if (BlacklistService.isBlacklistedUrl(requestUrl)) {
-            return false;
+        if (WhitelistService.isWhitelistedUrl(requestUrl)) {
+            return true;
         }
 
         const requestHostName = BlacklistService.extractHostname(requestUrl);
         const urlHostName = BlacklistService.extractHostname(url);
-
         if (requestHostName === urlHostName) {
             return true;
+        }
+
+        if (BlacklistService.isBlacklistedUrl(requestUrl)) {
+            return false;
         }
 
         Alert.alert(
@@ -313,18 +387,30 @@ class Browser extends Component {
                 selectionEnd: currentUrl.length,
                 shouldSelect: true,
             });
+            Animated.timing(this.padding, {
+                toValue: 0,
+                duration: 100,
+                useNativeDriver: false,
+            }).start();
         }
     };
 
     onBlurTextInput = () => {
-        const {currentUrl} = this.state;
+        const {currentUrl, firstSearch} = this.state;
         const searchBarText = this.parseUrl(currentUrl);
-        this.setState({
-            searchBarText,
-            selectionStart: undefined,
-            selectionEnd: undefined,
-            shouldSelect: false,
-        });
+        if (!firstSearch) {
+            this.setState({
+                searchBarText,
+                selectionStart: undefined,
+                selectionEnd: undefined,
+                shouldSelect: false,
+            });
+            Animated.timing(this.padding, {
+                toValue: 1,
+                duration: 100,
+                useNativeDriver: false,
+            }).start();
+        }
     };
 
     onSelectionChangeTextInput = ({nativeEvent: {selection: {start, end}}}) => {
@@ -333,6 +419,22 @@ class Browser extends Component {
             selectionEnd: end,
             shouldSelect: true,
         });
+    };
+
+    onPressHome = () => {
+        const {currentUrl} = this.state;
+        const url = 'https://www.google.com/';
+        if (currentUrl === url) {
+            this.webviewRef.reload();
+        } else {
+            this.setState({
+                url,
+            });
+        }
+    };
+
+    onPressRefresh = () => {
+        this.webviewRef.reload();
     };
 
     render() {
@@ -378,6 +480,23 @@ class Browser extends Component {
             backgroundColor: backgroundColorVal,
         };
 
+        const paddingVal = this.padding.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-20, 5],
+        });
+
+        const animLeftPadding = {
+            marginLeft: paddingVal,
+            marginRight: paddingVal,
+            opacity: paddingVal,
+        };
+
+        const animRightPadding = {
+            marginLeft: paddingVal,
+            marginRight: paddingVal,
+            opacity: paddingVal,
+        };
+
         const selection = (!firstSearch && shouldSelect) ? {
             start: selectionStart,
             end: selectionEnd,
@@ -395,6 +514,11 @@ class Browser extends Component {
                     </View>
                     }
                     <Animated.View style={[styles.searchBar, animSearchBar]}>
+                        <Animated.View style={[animLeftPadding, styles.outsideLeftIcon]}>
+                            <TouchableOpacity onPress={this.onPressHome}>
+                                <FontAwesomeIcon color={'#646464'} icon={faHome}/>
+                            </TouchableOpacity>
+                        </Animated.View>
                         <View style={styles.searchInputContainer}>
                             <FontAwesomeIcon color={'#646464'} icon={faSearch}/>
                             <TextInput
@@ -421,6 +545,11 @@ class Browser extends Component {
                                 selection={selection}
                             />
                         </View>
+                        <Animated.View style={[animRightPadding, styles.outsideRightIcon]}>
+                            <TouchableOpacity onPress={this.onPressRefresh}>
+                                <FontAwesomeIcon color={'#646464'} icon={faRedo}/>
+                            </TouchableOpacity>
+                        </Animated.View>
                     </Animated.View>
                     {!firstSearch &&
                     <WebView
@@ -435,11 +564,18 @@ class Browser extends Component {
                         sharedCookiesEnabled={true}
                         cacheEnabled={true}
                         pullToRefreshEnabled={true}
+                        allowFileAccess={true}
+                        decelerationRate={50}
+                        allowFileAccessFromFileURLs={true}
+                        allowUniversalAccessFromFileURLs={true}
                         thirdPartyCookiesEnabled={true}
                         scrollEnabled={true}
                         renderError={(url) => Alert.alert('Error', 'Cannot go to that page')}
                         originWhitelist={['*']}
                         javaScriptCanOpenWindowsAutomatically={false}
+                        injectedJavaScriptForMainFrameOnly={false}
+                        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+                        injectedJavaScriptBeforeContentLoaded={this.pauseVideoPlayingJs()}
                         injectedJavaScript={this.detectVideoPlayingJs()}
                         mediaPlaybackRequiresUserAction={true}
                         allowsFullscreenVideo={false}
@@ -501,12 +637,18 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         flexDirection: 'row',
-        paddingLeft: '5%',
-        paddingRight: '5%',
         paddingTop: 10,
         paddingBottom: 10,
+        paddingLeft: 10,
+        paddingRight: 10,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: '#cdcdcd',
+    },
+    outsideLeftIcon: {
+        marginRight: 5,
+    },
+    outsideRightIcon: {
+        marginLeft: 5,
     },
     searchInputContainer: {
         flex: 1,
@@ -514,9 +656,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         borderRadius: 10,
         paddingLeft: 10,
-        paddingRight: 20,
+        paddingRight: 10,
         paddingTop: 2,
         paddingBottom: 2,
+        marginLeft: 5,
+        marginRight: 5,
         flexDirection: 'row',
         alignItems: 'center',
     },
