@@ -1,5 +1,5 @@
 class WhitelistService {
-    static whitelist = [];
+    static whitelist = ['google.com'];
 
     static addToWhitelist(url) {
         if (WhitelistService.whitelist.indexOf(url) === -1) {

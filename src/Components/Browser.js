@@ -1,6 +1,5 @@
 import React, {Component} from 'react';
 import {
-    ActivityIndicator,
     Alert,
     Animated,
     Dimensions,
@@ -14,24 +13,24 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import {WebView} from 'react-native-webview';
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
-import {faAngleLeft, faAngleRight, faHome, faRedo, faSearch} from '@fortawesome/free-solid-svg-icons';
-import GoogleCast, {CastButton} from 'react-native-google-cast';
+import {faHome, faRedo, faSearch} from '@fortawesome/free-solid-svg-icons';
+import GoogleCast from 'react-native-google-cast';
 import CasterControl from './CasterControl';
 import BlacklistService from '../Services/BlacklistService';
 import logoImage from '../../images/logo.png';
 import VideoService from '../Services/VideoService';
-import WhitelistService from '../Services/WhitelistService';
+import BrowserWebView from './BrowserWebView';
+import NavigationBar from './NavigationBar';
 
 const logoImageUri = Image.resolveAssetSource(logoImage).uri;
 
 class Browser extends Component {
     webviewRef;
-    alreadyAskedUrls = [];
 
     constructor(props) {
         super(props);
+        this.webviewRef = React.createRef();
         this.state = {
             searchBarText: null,
             url: 'https://www.google.com/',
@@ -45,7 +44,6 @@ class Browser extends Component {
             currentTime: 0,
             isCasting: false,
             firstSearch: true,
-            loading: false,
             selectionStart: undefined,
             selectionEnd: undefined,
             shouldSelect: false,
@@ -82,7 +80,42 @@ class Browser extends Component {
         });
     }
 
+    componentWillUnmount(): void {
+        clearTimeout(this.loadingTimer);
+    }
+
+    pauseVideos = () => {
+        const pauseVideoCode = `
+                    window.postMessage('', '*');
+                    true;
+                `;
+        if (this.webviewRef && this.webviewRef.current) {
+            this.webviewRef.current.injectJavaScript(pauseVideoCode);
+        }
+    };
+
+    onShouldStartLoadWithRequest = (request) => {
+        const requestUrl = request.url;
+        Alert.alert(
+            'Are you sure?',
+            'You are navigating to\n' + requestUrl,
+            [
+                {
+                    text: 'Cancel',
+                    onPress: () => {
+                    },
+                    style: 'cancel',
+                },
+                {text: 'OK', onPress: () => this.navigateUrl(requestUrl)},
+            ],
+            {cancelable: false});
+
+        return false;
+    };
+
     startCast = (video, title, subtitle, duration, currentTime, mimeType = 'video/mp4') => {
+        this.pauseVideos();
+
         const internalStartCast = () => {
             GoogleCast.castMedia({
                 mediaUrl: video,
@@ -101,6 +134,7 @@ class Browser extends Component {
                     subtitle,
                     currentTime,
                     duration,
+                    isCasting: true,
                 });
             }).catch(err => {
                 console.log(err);
@@ -129,10 +163,8 @@ class Browser extends Component {
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration} = res.message;
 
-        const alreadyAsked = this.alreadyAskedUrls.indexOf(src) > -1;
 
-        if (casting !== src && !alreadyAsked) {
-            this.alreadyAskedUrls.push(src);
+        if (casting !== src) {
             const durationVal = duration ? duration : undefined;
             const currentTimeVal = duration ? currentTime : undefined;
             const mimeType = VideoService.getMimetype(src);
@@ -140,26 +172,7 @@ class Browser extends Component {
             const alertTitle = mimeType ?
                 'Ready to cast' :
                 'Media type not recognized';
-            const alertMessage = mimeType ?
-                'Would you like to cast\n' + currentUrl + '?' :
-                'Would you like to cast\n' + currentUrl + '\nanyway?';
-
-            const startCasting = () => {
-                this.startCast(src,
-                    searchBarText,
-                    currentUrl,
-                    durationVal,
-                    currentTimeVal,
-                    mimeType);
-
-                const pauseVideoCode = `
-                    window.postMessage('', '*');
-                    true;
-                `;
-                if (this.webviewRef) {
-                    this.webviewRef.injectJavaScript(pauseVideoCode);
-                }
-            };
+            const alertMessage = 'Would you like to cast\n' + currentUrl + '?';
 
             Alert.alert(
                 alertTitle,
@@ -172,7 +185,12 @@ class Browser extends Component {
                         style: 'cancel',
                     },
                     {
-                        text: 'OK', onPress: () => startCasting(),
+                        text: 'OK', onPress: () => this.startCast(src,
+                            searchBarText,
+                            currentUrl,
+                            durationVal,
+                            currentTimeVal,
+                            mimeType),
                     },
                 ],
                 {cancelable: false});
@@ -180,63 +198,16 @@ class Browser extends Component {
     };
 
     backButtonHandler = () => {
-        if (this.webviewRef) {
-            this.webviewRef.goBack();
+        if (this.webviewRef && this.webviewRef.current) {
+            this.webviewRef.current.goBack();
         }
     };
 
     frontButtonHandler = () => {
-        if (this.webviewRef) {
-            this.webviewRef.goForward();
+        if (this.webviewRef && this.webviewRef.current) {
+            this.webviewRef.current.goForward();
         }
     };
-
-    detectVideoPlayingJs = () => {
-        return `
-            (function () {
-                window.addEventListener("load", function() { 
-                    setInterval(function() {
-                        window.open = function() {};
-                        window.alert = function() {};
-                        var videos = document.querySelectorAll('video');
-                        for(var i = 0; i < videos.length; i++) {
-                            var video = videos[i];
-                            if(video.playing && video.currentSrc) {
-                                window.ReactNativeWebView.postMessage(JSON.stringify({
-                                    type: "click",
-                                    message: {
-                                        src: video.currentSrc,
-                                        currentTime: video.currentTime,
-                                        duration: video.duration,
-                                        poster: video.poster,
-                                        type: video.type
-                                    }
-                                }));
-                            }
-                        }
-                    }, 1000);
-                });
-            })();
-        `;
-    };
-
-    pauseVideoPlayingJs = () => `
-        Object.defineProperty(HTMLMediaElement.prototype, 'playing', {
-            get: function(){
-                return !!(this.currentTime > 0 && !this.paused && !this.ended && this.readyState > 2);
-            }
-        })
-        window.addEventListener('message', function (e) {
-            var videos = document.querySelectorAll('video');
-            for (var i = 0; i < videos.length; i++) {
-                var video = videos[i];
-                if (video.playing) {
-                    video.pause();
-                }
-            }
-        });
-        true;
-        `;
 
     searchBarTextChanged = (text) => {
         this.setState({
@@ -245,7 +216,13 @@ class Browser extends Component {
         });
     };
 
-    navigateUrl = () => {
+    navigateUrl = (url) => {
+        this.setState({
+            url,
+        });
+    };
+
+    onSubmitTextInput = () => {
         const {firstSearch, searchBarText, url, currentUrl} = this.state;
 
         if (firstSearch) {
@@ -253,11 +230,9 @@ class Browser extends Component {
         }
         const newUrl = this.parseSearchBarText(searchBarText);
         if (newUrl === url || newUrl === currentUrl) {
-            this.webviewRef.reload();
+            this.reloadPage();
         } else {
-            this.setState({
-                url: newUrl,
-            });
+            this.navigateUrl(newUrl);
         }
     };
 
@@ -268,14 +243,7 @@ class Browser extends Component {
             canGoForward,
             currentUrl: url,
             searchBarText: this.parseUrl(url),
-        }, () => {
-            WhitelistService.addToWhitelist(url);
-            this.alreadyAskedUrls = [];
         });
-    };
-
-    setWebviewRef = (ref) => {
-        this.webviewRef = ref;
     };
 
     parseUrl = url => {
@@ -324,60 +292,6 @@ class Browser extends Component {
         });
     };
 
-    onShouldStartLoadWithRequest = (request) => {
-        const {url} = this.state;
-        console.log('REQUEST:');
-        console.log(request);
-
-        if (!request || !request.url) {
-            return true;
-        }
-
-        const requestUrl = request.url;
-
-        if (WhitelistService.isWhitelistedUrl(requestUrl)) {
-            return true;
-        }
-
-        const requestHostName = BlacklistService.extractHostname(requestUrl);
-        const urlHostName = BlacklistService.extractHostname(url);
-        if (requestHostName === urlHostName) {
-            return true;
-        }
-
-        if (BlacklistService.isBlacklistedUrl(requestUrl)) {
-            return false;
-        }
-
-        Alert.alert(
-            'Are you sure?',
-            'You are navigating to\n' + request.url,
-            [
-                {
-                    text: 'Cancel',
-                    onPress: () => {
-                    },
-                    style: 'cancel',
-                },
-                {text: 'OK', onPress: () => this.setState({url: requestUrl})},
-            ],
-            {cancelable: false});
-
-        return false;
-    };
-
-    showLoading = () => {
-        this.setState({
-            loading: true,
-        });
-    };
-
-    hideLoading = () => {
-        this.setState({
-            loading: false,
-        });
-    };
-
     onFocusTextInput = () => {
         const {currentUrl, firstSearch} = this.state;
         if (!firstSearch) {
@@ -421,11 +335,17 @@ class Browser extends Component {
         });
     };
 
+    reloadPage = () => {
+        if (this.webviewRef && this.webviewRef.current) {
+            this.webviewRef.current.reload();
+        }
+    };
+
     onPressHome = () => {
         const {currentUrl} = this.state;
         const url = 'https://www.google.com/';
         if (currentUrl === url) {
-            this.webviewRef.reload();
+            this.reloadPage();
         } else {
             this.setState({
                 url,
@@ -434,7 +354,7 @@ class Browser extends Component {
     };
 
     onPressRefresh = () => {
-        this.webviewRef.reload();
+        this.reloadPage();
     };
 
     render() {
@@ -445,7 +365,6 @@ class Browser extends Component {
             canGoForward,
             isCasting,
             firstSearch,
-            loading,
             selectionStart,
             selectionEnd,
             shouldSelect,
@@ -537,7 +456,7 @@ class Browser extends Component {
                                 keyboardType={'web-search'}
                                 placeholder={'Search or enter website name'}
                                 placeholderTextColor={'#646464'}
-                                onSubmitEditing={this.navigateUrl}
+                                onSubmitEditing={this.onSubmitTextInput}
                                 autoCorrect={false}
                                 returnKeyType={'go'}
                                 autoCapitalize={'none'}
@@ -552,58 +471,24 @@ class Browser extends Component {
                         </Animated.View>
                     </Animated.View>
                     {!firstSearch &&
-                    <WebView
-                        ref={this.setWebviewRef}
-                        allowsBackForwardNavigationGestures={true}
+                    <BrowserWebView
+                        ref={this.webviewRef}
                         onNavigationStateChange={this.onNavigationStateChange}
-                        source={{uri: url}}
-                        allowsInlineMediaPlayback={true}
-                        javaScriptEnabled={true}
-                        onShouldStartLoadWithRequest={this.onShouldStartLoadWithRequest}
-                        domStorageEnabled={true}
-                        sharedCookiesEnabled={true}
-                        cacheEnabled={true}
-                        pullToRefreshEnabled={true}
-                        allowFileAccess={true}
-                        decelerationRate={50}
-                        allowFileAccessFromFileURLs={true}
-                        allowUniversalAccessFromFileURLs={true}
-                        thirdPartyCookiesEnabled={true}
-                        scrollEnabled={true}
-                        renderError={(url) => Alert.alert('Error', 'Cannot go to that page')}
-                        originWhitelist={['*']}
-                        javaScriptCanOpenWindowsAutomatically={false}
-                        injectedJavaScriptForMainFrameOnly={false}
-                        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
-                        injectedJavaScriptBeforeContentLoaded={this.pauseVideoPlayingJs()}
-                        injectedJavaScript={this.detectVideoPlayingJs()}
-                        mediaPlaybackRequiresUserAction={true}
-                        allowsFullscreenVideo={false}
                         onMessage={this.onMessage}
-                        useWebKit={true}
+                        onShouldStartLoadWithRequest={this.onShouldStartLoadWithRequest}
+                        source={{uri: url}}
                     />
                     }
                     {!firstSearch && isCasting &&
                     <CasterControl/>
                     }
                     {!firstSearch &&
-                    <View style={styles.navigationBar}>
-                        <TouchableOpacity style={styles.navigationButton} disabled={!canGoBack}
-                                          onPress={this.backButtonHandler}>
-                            <FontAwesomeIcon color={canGoBack ? '#646464' : '#cdcdcd'} size={28} icon={faAngleLeft}/>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.navigationButton} disabled={!canGoForward}
-                                          onPress={this.frontButtonHandler}>
-                            <FontAwesomeIcon color={canGoForward ? '#646464' : '#cdcdcd'} size={28}
-                                             icon={faAngleRight}/>
-                        </TouchableOpacity>
-                        <CastButton style={styles.castButton}/>
-                    </View>
-                    }
-                    {loading &&
-                    <View style={styles.activityContainer}>
-                        <ActivityIndicator size={'large'} color={'#646464'}/>
-                    </View>
+                    <NavigationBar
+                        canGoBack={canGoBack}
+                        canGoForward={canGoForward}
+                        onBackPress={this.backButtonHandler}
+                        onForwardPress={this.frontButtonHandler}
+                    />
                     }
                 </SafeAreaView>
             </Animated.View>
@@ -671,35 +556,6 @@ const styles = StyleSheet.create({
         color: '#222222',
         padding: 0,
         height: 20,
-    },
-    navigationBar: {
-        flexDirection: 'row',
-        paddingLeft: '10%',
-        paddingRight: '10%',
-        paddingTop: 5,
-        paddingBottom: 5,
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: '#cdcdcd',
-    },
-    navigationButton: {
-        padding: 5,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    castButton: {
-        width: 30,
-        height: 30,
-    },
-    activityContainer: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        left: 0,
-        right: 0,
-        justifyContent: 'center',
-        alignItems: 'center',
     },
 });
 
