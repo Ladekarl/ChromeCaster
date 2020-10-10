@@ -9,19 +9,16 @@ import {
     StatusBar,
     StyleSheet,
     Text,
-    TextInput,
-    TouchableOpacity,
     View,
 } from 'react-native';
-import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
-import {faHome, faRedo, faSearch} from '@fortawesome/free-solid-svg-icons';
 import GoogleCast from 'react-native-google-cast';
 import CasterControl from './CasterControl';
-import BlacklistService from '../Services/BlacklistService';
+import UrlService from '../Services/UrlService';
 import logoImage from '../../images/logo.png';
 import VideoService from '../Services/VideoService';
 import BrowserWebView from './BrowserWebView';
 import NavigationBar from './NavigationBar';
+import BrowserSearchBar from './BrowserSearchBar';
 
 const logoImageUri = Image.resolveAssetSource(logoImage).uri;
 
@@ -32,7 +29,6 @@ class Browser extends Component {
         super(props);
         this.webviewRef = React.createRef();
         this.state = {
-            searchBarText: null,
             url: 'https://www.google.com/',
             canGoBack: false,
             canGoForward: false,
@@ -44,13 +40,10 @@ class Browser extends Component {
             currentTime: 0,
             isCasting: false,
             firstSearch: true,
-            selectionStart: undefined,
-            selectionEnd: undefined,
-            shouldSelect: false,
         };
 
-        this.searchBar = new Animated.Value(0);
         this.backgroundColor = new Animated.Value(0);
+        this.searchBar = new Animated.Value(0);
         this.padding = new Animated.Value(0);
     }
 
@@ -73,7 +66,6 @@ class Browser extends Component {
                 });
             },
         );
-
 
         Dimensions.addEventListener('change', () => {
             this.forceUpdate();
@@ -158,7 +150,7 @@ class Browser extends Component {
     };
 
     onMessage = event => {
-        const {casting, currentUrl, searchBarText} = this.state;
+        const {casting, currentUrl} = this.state;
         console.log('onMessage', JSON.parse(event.nativeEvent.data));
         const res = JSON.parse(event.nativeEvent.data);
         const {src, currentTime, duration} = res.message;
@@ -186,7 +178,7 @@ class Browser extends Component {
                     },
                     {
                         text: 'OK', onPress: () => this.startCast(src,
-                            searchBarText,
+                            UrlService.parseUrl(currentUrl),
                             currentUrl,
                             durationVal,
                             currentTimeVal,
@@ -209,30 +201,24 @@ class Browser extends Component {
         }
     };
 
-    searchBarTextChanged = (text) => {
-        this.setState({
-            searchBarText: text,
-            shouldSelect: false,
-        });
+    navigateHome = () => {
+        this.navigateUrl('https://www.google.com');
     };
 
     navigateUrl = (url) => {
-        this.setState({
-            url,
-        });
-    };
-
-    onSubmitTextInput = () => {
-        const {firstSearch, searchBarText, url, currentUrl} = this.state;
-
-        if (firstSearch) {
-            this.animate();
-        }
-        const newUrl = this.parseSearchBarText(searchBarText);
-        if (newUrl === url || newUrl === currentUrl) {
+        const {currentUrl} = this.state;
+        if (currentUrl === url) {
             this.reloadPage();
         } else {
-            this.navigateUrl(newUrl);
+            this.setState({
+                url,
+            });
+        }
+    };
+
+    reloadPage = () => {
+        if (this.webviewRef && this.webviewRef.current) {
+            this.webviewRef.current.reload();
         }
     };
 
@@ -242,28 +228,25 @@ class Browser extends Component {
             canGoBack,
             canGoForward,
             currentUrl: url,
-            searchBarText: this.parseUrl(url),
         });
     };
 
-    parseUrl = url => {
-        return BlacklistService.extractDomainName(url);
+    onSearchBarAnimationFinished = () => {
+        if (Platform.OS === 'android') {
+            StatusBar.setBackgroundColor('#ffffff', true);
+        }
+        StatusBar.setBarStyle('dark-content', true);
+        this.setState({firstSearch: false});
     };
 
-    parseSearchBarText = searchBarText => {
-        let buildUrl = 'https://';
-        const protocolIndex = searchBarText.indexOf('://');
-        if (searchBarText.indexOf('https://www.') > -1) {
-            buildUrl = searchBarText;
-        } else if (searchBarText.indexOf('www.') > -1) {
-            buildUrl += searchBarText;
-        } else if (protocolIndex > -1) {
-            buildUrl += 'www.' + searchBarText.substr(protocolIndex + 3, searchBarText.length);
-        } else {
-            buildUrl += 'www.' + searchBarText;
-        }
-
-        return searchBarText.indexOf('.') > -1 ? buildUrl : 'https://www.google.com/search?q=' + encodeURIComponent(searchBarText);
+    searchBarAnimations = () => {
+        return [
+            Animated.timing(this.backgroundColor, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: false,
+            }),
+        ];
     };
 
     animate = () => {
@@ -292,82 +275,28 @@ class Browser extends Component {
         });
     };
 
-    onFocusTextInput = () => {
-        const {currentUrl, firstSearch} = this.state;
-        if (!firstSearch) {
-            this.setState({
-                searchBarText: currentUrl,
-                selectionStart: 0,
-                selectionEnd: currentUrl.length,
-                shouldSelect: true,
-            });
-            Animated.timing(this.padding, {
-                toValue: 0,
-                duration: 100,
-                useNativeDriver: false,
-            }).start();
-        }
-    };
+    onSubmitTextInput = (newUrl) => {
+        const {currentUrl, url, firstSearch} = this.state;
 
-    onBlurTextInput = () => {
-        const {currentUrl, firstSearch} = this.state;
-        const searchBarText = this.parseUrl(currentUrl);
-        if (!firstSearch) {
-            this.setState({
-                searchBarText,
-                selectionStart: undefined,
-                selectionEnd: undefined,
-                shouldSelect: false,
-            });
-            Animated.timing(this.padding, {
-                toValue: 1,
-                duration: 100,
-                useNativeDriver: false,
-            }).start();
-        }
-    };
-
-    onSelectionChangeTextInput = ({nativeEvent: {selection: {start, end}}}) => {
-        this.setState({
-            selectionStart: start,
-            selectionEnd: end,
-            shouldSelect: true,
-        });
-    };
-
-    reloadPage = () => {
-        if (this.webviewRef && this.webviewRef.current) {
-            this.webviewRef.current.reload();
-        }
-    };
-
-    onPressHome = () => {
-        const {currentUrl} = this.state;
-        const url = 'https://www.google.com/';
-        if (currentUrl === url) {
+        if (newUrl === url || newUrl === currentUrl) {
             this.reloadPage();
         } else {
-            this.setState({
-                url,
-            });
+            this.navigateUrl(newUrl);
         }
-    };
 
-    onPressRefresh = () => {
-        this.reloadPage();
+        if (firstSearch) {
+            this.animate();
+        }
     };
 
     render() {
         const {
-            searchBarText,
             url,
             canGoBack,
             canGoForward,
             isCasting,
             firstSearch,
-            selectionStart,
-            selectionEnd,
-            shouldSelect,
+            currentUrl,
         } = this.state;
 
         if (Platform.OS === 'ios' && !firstSearch) {
@@ -376,14 +305,18 @@ class Browser extends Component {
 
         const windowHeight = Dimensions.get('window').height;
 
-        const yVal = this.searchBar.interpolate({
-            inputRange: [0, 1],
-            outputRange: [windowHeight / 4 + 30, 0],
-        });
-
         const backgroundColorVal = this.backgroundColor.interpolate({
             inputRange: [0, 1],
             outputRange: ['#0065ff', '#ffffff'],
+        });
+
+        const animColor = {
+            backgroundColor: backgroundColorVal,
+        };
+
+        const yVal = this.searchBar.interpolate({
+            inputRange: [0, 1],
+            outputRange: [windowHeight / 4 + 30, 0],
         });
 
         const animSearchBar = {
@@ -392,34 +325,8 @@ class Browser extends Component {
                     translateY: yVal,
                 },
             ],
-            borderBottomWidth: firstSearch ? 0 : StyleSheet.hairlineWidth,
+            borderBottomWidth: !firstSearch ? StyleSheet.hairlineWidth : 0,
         };
-
-        const animColor = {
-            backgroundColor: backgroundColorVal,
-        };
-
-        const paddingVal = this.padding.interpolate({
-            inputRange: [0, 1],
-            outputRange: [-20, 5],
-        });
-
-        const animLeftPadding = {
-            marginLeft: paddingVal,
-            marginRight: paddingVal,
-            opacity: paddingVal,
-        };
-
-        const animRightPadding = {
-            marginLeft: paddingVal,
-            marginRight: paddingVal,
-            opacity: paddingVal,
-        };
-
-        const selection = (!firstSearch && shouldSelect) ? {
-            start: selectionStart,
-            end: selectionEnd,
-        } : undefined;
 
         return (
             <Animated.View style={[styles.container, animColor]}>
@@ -432,44 +339,17 @@ class Browser extends Component {
                         <Image style={styles.arrowImage} source={require('../../images/arrow.png')}/>
                     </View>
                     }
-                    <Animated.View style={[styles.searchBar, animSearchBar]}>
-                        <Animated.View style={[animLeftPadding, styles.outsideLeftIcon]}>
-                            <TouchableOpacity onPress={this.onPressHome}>
-                                <FontAwesomeIcon color={'#646464'} icon={faHome}/>
-                            </TouchableOpacity>
-                        </Animated.View>
-                        <View style={styles.searchInputContainer}>
-                            <FontAwesomeIcon color={'#646464'} icon={faSearch}/>
-                            <TextInput
-                                multiline={false}
-                                textAlign={'center'}
-                                onChangeText={this.searchBarTextChanged}
-                                underlineColorAndroid={'transparent'}
-                                decelerationRate={'normal'}
-                                allowFontScaling={false}
-                                onFocus={this.onFocusTextInput}
-                                onBlur={this.onBlurTextInput}
-                                onSelectionChange={this.onSelectionChangeTextInput}
-                                autoFocus={true}
-                                style={styles.searchInput}
-                                value={searchBarText}
-                                keyboardType={'web-search'}
-                                placeholder={'Search or enter website name'}
-                                placeholderTextColor={'#646464'}
-                                onSubmitEditing={this.onSubmitTextInput}
-                                autoCorrect={false}
-                                returnKeyType={'go'}
-                                autoCapitalize={'none'}
-                                enablesReturnKeyAutomatically={true}
-                                selection={selection}
-                            />
-                        </View>
-                        <Animated.View style={[animRightPadding, styles.outsideRightIcon]}>
-                            <TouchableOpacity onPress={this.onPressRefresh}>
-                                <FontAwesomeIcon color={'#646464'} icon={faRedo}/>
-                            </TouchableOpacity>
-                        </Animated.View>
-                    </Animated.View>
+                    <BrowserSearchBar
+                        value={firstSearch ? '' : currentUrl}
+                        onPressHome={this.navigateHome}
+                        onPressRefresh={this.reloadPage}
+                        animations={this.searchBarAnimations()}
+                        shouldAnimate={true}
+                        containerStyle={animSearchBar}
+                        onSubmitTextInput={this.onSubmitTextInput}
+                        shouldSelect={!firstSearch}
+                        onAnimationFinished={this.onSearchBarAnimationFinished}
+                    />
                     {!firstSearch &&
                     <BrowserWebView
                         ref={this.webviewRef}
@@ -517,45 +397,6 @@ const styles = StyleSheet.create({
         tintColor: '#ffffff',
         height: 100,
         width: 100,
-    },
-    searchBar: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexDirection: 'row',
-        paddingTop: 10,
-        paddingBottom: 10,
-        paddingLeft: 10,
-        paddingRight: 10,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#cdcdcd',
-    },
-    outsideLeftIcon: {
-        marginRight: 5,
-    },
-    outsideRightIcon: {
-        marginLeft: 5,
-    },
-    searchInputContainer: {
-        flex: 1,
-        backgroundColor: '#e2dfdf',
-        justifyContent: 'space-between',
-        borderRadius: 10,
-        paddingLeft: 10,
-        paddingRight: 10,
-        paddingTop: 2,
-        paddingBottom: 2,
-        marginLeft: 5,
-        marginRight: 5,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    searchInput: {
-        flex: 1,
-        margin: 5,
-        fontSize: 17,
-        color: '#222222',
-        padding: 0,
-        height: 20,
     },
 });
 

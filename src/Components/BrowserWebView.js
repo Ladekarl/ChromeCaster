@@ -1,8 +1,7 @@
 import React, {Component} from 'react';
 import {Alert, StyleSheet, View} from 'react-native';
 import {WebView} from 'react-native-webview';
-import BlacklistService from '../Services/BlacklistService';
-import WhitelistService from '../Services/WhitelistService';
+import UrlService from '../Services/UrlService';
 import LoadingBar from './LoadingBar';
 import PropTypes from 'prop-types';
 
@@ -79,8 +78,8 @@ class BrowserWebView extends Component {
         const {onNavigationStateChange} = this.props;
         const {url} = navState;
 
-        const requestDomainName = BlacklistService.extractDomainName(url);
-        WhitelistService.addToWhitelist(requestDomainName);
+        const requestDomainName = UrlService.extractDomainName(url);
+        UrlService.addToWhitelist(requestDomainName);
         this.alreadyAskedUrls = [];
 
         onNavigationStateChange && onNavigationStateChange(navState);
@@ -108,18 +107,18 @@ class BrowserWebView extends Component {
         }
 
         const requestUrl = request.url;
-        const requestDomainName = BlacklistService.extractDomainName(requestUrl);
+        const requestDomainName = UrlService.extractDomainName(requestUrl);
 
-        if (WhitelistService.isWhitelistedUrl(requestDomainName)) {
+        if (UrlService.isWhitelistedUrl(requestDomainName)) {
             return true;
         }
 
-        const urlDomainName = BlacklistService.extractDomainName(source.uri);
+        const urlDomainName = UrlService.extractDomainName(source.uri);
         if (requestDomainName === urlDomainName) {
             return true;
         }
 
-        if (BlacklistService.isBlacklistedUrl(requestUrl)) {
+        if (UrlService.isBlacklistedUrl(requestUrl)) {
             return false;
         }
 

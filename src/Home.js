@@ -1,7 +1,7 @@
 import React, {Component} from 'react';
 import Browser from './Components/Browser';
 import {ActivityIndicator, Platform, StatusBar, StyleSheet, View} from 'react-native';
-import BlacklistService from './Services/BlacklistService';
+import UrlService from './Services/UrlService';
 
 class Home extends Component {
 
@@ -23,7 +23,7 @@ class Home extends Component {
     }
 
     loadBlacklist = () => {
-        BlacklistService.loadBlacklist().then(() => {
+        UrlService.loadBlacklist().then(() => {
             this.setState({
                 fetching: false,
             });

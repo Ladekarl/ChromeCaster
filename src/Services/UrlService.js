@@ -1,13 +1,24 @@
 import psl from 'psl';
 
-class BlacklistService {
+class UrlService {
     static blacklist = [];
+    static whitelist = ['google.com'];
+
+    static addToWhitelist(url) {
+        if (UrlService.whitelist.indexOf(url) === -1) {
+            UrlService.whitelist.push(url);
+        }
+    }
+
+    static isWhitelistedUrl(url) {
+        return UrlService.whitelist.indexOf(url) > -1;
+    }
 
     static async loadBlacklist() {
         const response = await fetch('https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts');
         let text = await response.text();
-        BlacklistService.blacklist = BlacklistService.parseBlacklistText(text);
-        return BlacklistService.blacklist;
+        UrlService.blacklist = UrlService.parseBlacklistText(text);
+        return UrlService.blacklist;
     }
 
     static parseBlacklistText(blacklistText) {
@@ -22,18 +33,21 @@ class BlacklistService {
     }
 
     static isBlacklistedUrl(url) {
-        const hostname = BlacklistService.extractHostname(url);
-        return BlacklistService.isBlacklistedHostname(hostname);
+        const hostname = UrlService.extractHostname(url);
+        return UrlService.isBlacklistedHostname(hostname);
     }
 
     static isBlacklistedHostname(hostname) {
-        if (!BlacklistService.blacklist) {
+        if (!UrlService.blacklist) {
             return false;
         }
-        return BlacklistService.blacklist.indexOf(hostname) > -1;
+        return UrlService.blacklist.indexOf(hostname) > -1;
     }
 
     static extractHostname(url) {
+        if (!url) {
+            return;
+        }
         let hostname;
         if (url.indexOf('//') > -1) {
             hostname = url.split('/')[2];
@@ -46,8 +60,12 @@ class BlacklistService {
     }
 
     static extractDomainName(url) {
-        return psl.get(BlacklistService.extractHostname(url));
+        return psl.get(UrlService.extractHostname(url));
+    }
+
+    static parseUrl(url) {
+        return UrlService.extractDomainName(url);
     }
 }
 
-export default BlacklistService;
+export default UrlService;
