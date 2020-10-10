@@ -1,7 +1,7 @@
 import React, {Component} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome';
-import {faPause, faPlay, faAngleUp, faStop} from '@fortawesome/free-solid-svg-icons';
+import {faAngleUp, faPause, faPlay, faStop} from '@fortawesome/free-solid-svg-icons';
 import GoogleCast from 'react-native-google-cast';
 
 class CasterControl extends Component {
@@ -12,7 +12,7 @@ class CasterControl extends Component {
         this.state = {
             playerState: 0,
             position: 0,
-            duration: 0
+            duration: 0,
         };
     }
 
@@ -23,6 +23,18 @@ class CasterControl extends Component {
         );
 
         GoogleCast.EventEmitter.addListener(
+            GoogleCast.MEDIA_PROGRESS_UPDATED,
+            this.progressListener,
+        );
+    }
+
+    componentWillUnmount() {
+        GoogleCast.EventEmitter.removeListener(
+            GoogleCast.MEDIA_STATUS_UPDATED,
+            this.updatedListener,
+        );
+
+        GoogleCast.EventEmitter.removeListener(
             GoogleCast.MEDIA_PROGRESS_UPDATED,
             this.progressListener,
         );

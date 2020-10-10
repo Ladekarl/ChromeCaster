@@ -39,7 +39,7 @@ class BrowserWebView extends Component {
                             var video = videos[i];
                             if(video.playing && video.currentSrc) {
                                 window.ReactNativeWebView.postMessage(JSON.stringify({
-                                    type: "click",
+                                    type: "playing",
                                     message: {
                                         src: video.currentSrc,
                                         currentTime: video.currentTime,
@@ -68,6 +68,7 @@ class BrowserWebView extends Component {
                 var video = videos[i];
                 if (video.playing) {
                     video.pause();
+                    window.ReactNativeWebView.postMessage(JSON.stringify({type: "paused"}));
                 }
             }
         });
@@ -88,12 +89,18 @@ class BrowserWebView extends Component {
     onMessage = event => {
         const {onMessage} = this.props;
         const res = JSON.parse(event.nativeEvent.data);
-        const {src} = res.message;
-        const alreadyAsked = this.alreadyAskedUrls.indexOf(src) > -1;
+        const type = res.type;
 
-        if (!alreadyAsked) {
-            onMessage && onMessage(event);
-            this.alreadyAskedUrls.push(src);
+        if (type === 'paused') {
+            this.alreadyAskedUrls = [];
+
+        } else if (type === 'playing') {
+            const {src} = res.message;
+            const alreadyAsked = this.alreadyAskedUrls.indexOf(src) > -1;
+            if (!alreadyAsked) {
+                onMessage && onMessage(event);
+                this.alreadyAskedUrls.push(src);
+            }
         }
     };
 
